@@ -224,7 +224,9 @@ mod cli_tests {
     }
     #[test]
     fn every_long_option_has_a_short_option() {
-        assert_short_and_long(&Cli::command());
+        let command = Cli::command();
+        command.clone().debug_assert();
+        assert_short_and_long(&command);
     }
     #[test]
     fn embedded_manual_is_section_one() {
