@@ -2,6 +2,9 @@ use anyhow::{Result, bail};
 use chrono::Utc;
 use clap::{Args, Parser, Subcommand};
 use somme_cli::{Account, ApiClient, Product, active_account, select_account};
+use std::path::PathBuf;
+
+const MANPAGE: &str = include_str!("../man/somme.1");
 
 #[derive(Parser)]
 #[command(
@@ -10,11 +13,11 @@ use somme_cli::{Account, ApiClient, Product, active_account, select_account};
     about = "Shared authenticated CLI for Somme applications"
 )]
 struct Cli {
-    #[arg(long, default_value = "somme")]
+    #[arg(short = 'a', long, default_value = "somme")]
     app: String,
-    #[arg(long, default_value = "SOMME")]
+    #[arg(short = 'e', long, default_value = "SOMME")]
     env_prefix: String,
-    #[arg(long, default_value = "https://example.invalid/api")]
+    #[arg(short = 'u', long, default_value = "https://example.invalid/api")]
     api_base: String,
     #[command(subcommand)]
     command: Command,
@@ -24,7 +27,7 @@ struct Cli {
 enum Command {
     Login(LoginArgs),
     Logout {
-        #[arg(long)]
+        #[arg(short = 'a', long)]
         account: Option<String>,
     },
     Account {
@@ -32,29 +35,42 @@ enum Command {
         command: Option<AccountCommand>,
     },
     Config,
+    Man {
+        #[command(subcommand)]
+        command: Option<ManCommand>,
+    },
     Request {
         path: String,
-        #[arg(long)]
+        #[arg(short = 'j', long)]
         json: bool,
     },
 }
 #[derive(Args)]
 struct LoginArgs {
-    #[arg(long)]
+    #[arg(short = 't', long)]
     token: Option<String>,
-    #[arg(long)]
+    #[arg(short = 'u', long)]
     api_base: Option<String>,
-    #[arg(long)]
+    #[arg(short = 'a', long)]
     account: Option<String>,
-    #[arg(long)]
+    #[arg(short = 'e', long)]
     email: Option<String>,
-    #[arg(long)]
+    #[arg(short = 'r', long)]
     tier: Option<String>,
 }
 #[derive(Subcommand)]
 enum AccountCommand {
     Ls,
     Use { name: String },
+}
+
+#[derive(Subcommand)]
+enum ManCommand {
+    Show,
+    Install {
+        #[arg(short = 'd', long, value_name = "DIR")]
+        dir: Option<PathBuf>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -65,7 +81,21 @@ fn main() -> Result<()> {
         Command::Logout { account } => logout(&product, account.as_deref()),
         Command::Account { command } => accounts(&product, command),
         Command::Config => show_config(&product),
+        Command::Man { command } => man(command),
         Command::Request { path, json } => request(&product, &path, json),
+    }
+}
+fn man(command: Option<ManCommand>) -> Result<()> {
+    match command.unwrap_or(ManCommand::Show) {
+        ManCommand::Show => {
+            print!("{MANPAGE}");
+            Ok(())
+        }
+        ManCommand::Install { dir } => {
+            let destination = somme_cli::install_manpage("somme", MANPAGE, dir)?;
+            println!("Installed Somme manual at {}", destination.display());
+            Ok(())
+        }
     }
 }
 fn login(product: &Product, args: LoginArgs) -> Result<()> {
@@ -171,4 +201,34 @@ fn request(product: &Product, path: &str, pretty: bool) -> Result<()> {
         eprintln!("rate limit: {:?} remaining", response.rate_limit.remaining)
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+    use clap::CommandFactory;
+    fn assert_short_and_long(command: &clap::Command) {
+        for argument in command.get_arguments() {
+            if argument.get_long().is_some() {
+                assert!(
+                    argument.get_short().is_some(),
+                    "{} --{} has no short option",
+                    command.get_name(),
+                    argument.get_long().unwrap()
+                );
+            }
+        }
+        for child in command.get_subcommands() {
+            assert_short_and_long(child);
+        }
+    }
+    #[test]
+    fn every_long_option_has_a_short_option() {
+        assert_short_and_long(&Cli::command());
+    }
+    #[test]
+    fn embedded_manual_is_section_one() {
+        assert!(MANPAGE.contains("SOMME"));
+        assert!(MANPAGE.contains("\\-\\-token"));
+    }
 }

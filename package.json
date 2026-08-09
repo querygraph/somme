@@ -7,5 +7,5 @@
   "repository": "github:querygraph/somme",
   "exports": { ".": { "types": "./server/index.d.ts", "import": "./server/index.js" } },
   "files": ["server"],
-  "scripts": { "test": "node --test tests/*.test.js" }
+  "scripts": { "test": "node --test tests/*.test.js", "man:build": "./scripts/generate-man.sh" }
 }

@@ -1,6 +1,10 @@
 //! Product-neutral primitives for authenticated, rate-aware command-line clients.
 
-use std::{collections::BTreeMap, fs, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
@@ -116,6 +120,55 @@ pub fn write_toml<T: Serialize>(path: &PathBuf, value: &T) -> Result<()> {
     }
     fs::write(path, toml::to_string(value)?)
         .with_context(|| format!("could not write {}", path.display()))
+}
+
+/// Install a checked-in section-1 manual into an explicit or standard directory.
+pub fn install_manpage(
+    name: &str,
+    content: &str,
+    requested_directory: Option<PathBuf>,
+) -> Result<PathBuf> {
+    let directories = requested_directory
+        .map(|directory| vec![directory])
+        .unwrap_or_else(default_manpage_directories);
+    let mut failures = Vec::new();
+    for directory in directories {
+        match install_manpage_in(name, content, &directory) {
+            Ok(destination) => return Ok(destination),
+            Err(error) => failures.push(format!("{}: {error:#}", directory.display())),
+        }
+    }
+    bail!(
+        "could not install the {name} manual; try --dir ~/.local/share/man/man1 or use the required system privileges\n{}",
+        failures.join("\n")
+    )
+}
+
+pub fn install_manpage_in(name: &str, content: &str, directory: &Path) -> Result<PathBuf> {
+    fs::create_dir_all(directory)
+        .with_context(|| format!("could not create {}", directory.display()))?;
+    let destination = directory.join(format!("{name}.1"));
+    fs::write(&destination, content)
+        .with_context(|| format!("could not write {}", destination.display()))?;
+    Ok(destination)
+}
+
+pub fn default_manpage_directories() -> Vec<PathBuf> {
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    let user = home.join(".local/share/man/man1");
+    if std::env::consts::OS == "macos" {
+        vec![
+            PathBuf::from("/opt/homebrew/share/man/man1"),
+            PathBuf::from("/usr/local/share/man/man1"),
+            user,
+        ]
+    } else {
+        vec![
+            PathBuf::from("/usr/local/share/man/man1"),
+            user,
+            PathBuf::from("/usr/share/man/man1"),
+        ]
+    }
 }
 
 pub fn active_account(config: &Config) -> Option<(&str, &Account)> {
@@ -272,5 +325,14 @@ mod tests {
         headers.insert("x-ratelimit-limit", "unlimited".parse().unwrap());
         headers.insert("x-ratelimit-remaining", "unlimited".parse().unwrap());
         assert!(rate_limit_from_headers(&headers).unlimited);
+    }
+    #[test]
+    fn installs_a_manual_in_an_explicit_directory() {
+        let directory = std::env::temp_dir().join(format!("somme-man-test-{}", std::process::id()));
+        let destination =
+            install_manpage("sample", ".TH SAMPLE 1", Some(directory.clone())).unwrap();
+        assert_eq!(fs::read_to_string(&destination).unwrap(), ".TH SAMPLE 1");
+        fs::remove_file(destination).unwrap();
+        fs::remove_dir(directory).unwrap();
     }
 }
