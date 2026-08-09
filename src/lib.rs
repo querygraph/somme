@@ -2,9 +2,14 @@
 
 use std::{
     collections::BTreeMap,
-    fs,
+    fs::{self, OpenOptions},
+    io::Write,
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
@@ -117,9 +122,37 @@ pub fn write_toml<T: Serialize>(path: &PathBuf, value: &T) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("could not create {}", parent.display()))?;
+        #[cfg(unix)]
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
+            .with_context(|| format!("could not secure {}", parent.display()))?;
     }
-    fs::write(path, toml::to_string(value)?)
-        .with_context(|| format!("could not write {}", path.display()))
+    let serialized = toml::to_string(value)?;
+    let suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temporary = path.with_extension(format!("toml.{}.{}.tmp", std::process::id(), suffix));
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options
+        .open(&temporary)
+        .with_context(|| format!("could not create {}", temporary.display()))?;
+    if let Err(error) = file
+        .write_all(serialized.as_bytes())
+        .and_then(|_| file.sync_all())
+    {
+        let _ = fs::remove_file(&temporary);
+        return Err(error).with_context(|| format!("could not write {}", path.display()));
+    }
+    drop(file);
+    fs::rename(&temporary, path)
+        .with_context(|| format!("could not replace {}", path.display()))?;
+    #[cfg(unix)]
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+        .with_context(|| format!("could not secure {}", path.display()))?;
+    Ok(())
 }
 
 /// Install a checked-in section-1 manual into an explicit or standard directory.
@@ -333,6 +366,24 @@ mod tests {
             install_manpage("sample", ".TH SAMPLE 1", Some(directory.clone())).unwrap();
         assert_eq!(fs::read_to_string(&destination).unwrap(), ".TH SAMPLE 1");
         fs::remove_file(destination).unwrap();
+        fs::remove_dir(directory).unwrap();
+    }
+    #[cfg(unix)]
+    #[test]
+    fn writes_config_with_private_permissions() {
+        let directory =
+            std::env::temp_dir().join(format!("somme-config-test-{}", std::process::id()));
+        let path = directory.join("config.toml");
+        write_toml(&path, &Config::default()).unwrap();
+        assert_eq!(
+            fs::metadata(&directory).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        fs::remove_file(path).unwrap();
         fs::remove_dir(directory).unwrap();
     }
 }
