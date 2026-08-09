@@ -1,0 +1,11 @@
+{
+  "name": "@querygraph/somme",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared bearer-token and rate-limit primitives for Somme-derived APIs",
+  "license": "MIT",
+  "repository": "github:querygraph/somme",
+  "exports": { ".": { "types": "./server/index.d.ts", "import": "./server/index.js" } },
+  "files": ["server"],
+  "scripts": { "test": "node --test tests/*.test.js" }
+}
