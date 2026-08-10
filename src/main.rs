@@ -1,7 +1,9 @@
 use anyhow::{Result, bail};
 use chrono::Utc;
 use clap::{Args, Parser, Subcommand};
-use somme_cli::{Account, ApiClient, Product, active_account, select_account};
+use somme_cli::{
+    Account, ApiClient, Product, active_account, response_metadata_lines, select_account,
+};
 use std::path::PathBuf;
 
 const MANPAGE: &str = include_str!("../man/somme.1");
@@ -197,8 +199,8 @@ fn request(product: &Product, path: &str, pretty: bool) -> Result<()> {
     } else {
         println!("{}", response.body)
     }
-    if !response.rate_limit.unlimited {
-        eprintln!("rate limit: {:?} remaining", response.rate_limit.remaining)
+    for line in response_metadata_lines(&response) {
+        eprintln!("{line}");
     }
     Ok(())
 }
