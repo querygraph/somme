@@ -129,6 +129,7 @@ fn login(product: &Product, args: LoginArgs) -> Result<()> {
             email: args.email,
             tier: args.tier,
             updated_at: Some(Utc::now()),
+            settings: Default::default(),
         },
     );
     config.active_account = Some(name.clone());

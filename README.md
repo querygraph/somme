@@ -15,6 +15,10 @@ Rust callers receive successful JSON in `ApiResponse`. Non-success responses rem
 
 The JavaScript package emits the same weighted headers through `rateLimitHeaders`. `RateLimitError` carries a structured response body so web frameworks can return the exact cost, scope, retry time, and alternatives rather than reducing work silently.
 
+## Shared profile configuration
+
+Each derived CLI keeps named account profiles in one extensible TOML file directly under the home directory: `~/.somme`, `~/.suffix`, or `~/.bay`. A single profile is selected automatically; when several profiles exist, `account use NAME` records the explicit `active_account`. Unknown TOML settings are preserved when the CLI updates credentials, so derived products can add configuration without forking the profile store. Existing platform configuration files remain a read-only migration fallback until the next save writes the dotfile.
+
 ```sh
 cargo fmt --all -- --check
 cargo test

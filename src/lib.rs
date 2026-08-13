@@ -24,6 +24,8 @@ pub struct Config {
     pub active_account: Option<String>,
     #[serde(default)]
     pub accounts: BTreeMap<String, Account>,
+    #[serde(flatten)]
+    pub settings: BTreeMap<String, toml::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -37,6 +39,8 @@ pub struct Account {
     pub tier: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<DateTime<Utc>>,
+    #[serde(flatten)]
+    pub settings: BTreeMap<String, toml::Value>,
 }
 
 impl Account {
@@ -229,7 +233,15 @@ impl Product {
         config_path(&self.slug)
     }
     pub fn load_config(&self) -> Result<Config> {
-        read_toml(&self.config_path()?)
+        let path = self.config_path()?;
+        if path.exists() {
+            return read_toml(&path);
+        }
+        let legacy = legacy_config_path(&self.slug)?;
+        if legacy.exists() {
+            return read_toml(&legacy);
+        }
+        Ok(Config::default())
     }
     pub fn save_config(&self, config: &Config) -> Result<()> {
         write_toml(&self.config_path()?, config)
@@ -244,11 +256,26 @@ impl Product {
             email: None,
             tier: None,
             updated_at: None,
+            settings: BTreeMap::new(),
         })
     }
 }
 
 pub fn config_path(app: &str) -> Result<PathBuf> {
+    if app.is_empty()
+        || !app.chars().all(|character| {
+            character.is_ascii_alphanumeric() || character == '-' || character == '_'
+        })
+    {
+        bail!(
+            "application config name must contain only ASCII letters, numbers, hyphens, or underscores"
+        )
+    }
+    let home = dirs::home_dir().ok_or_else(|| anyhow!("could not find the user home directory"))?;
+    Ok(home.join(format!(".{app}")))
+}
+
+pub fn legacy_config_path(app: &str) -> Result<PathBuf> {
     let base =
         dirs::config_dir().ok_or_else(|| anyhow!("could not find the user config directory"))?;
     Ok(base.join(app).join("config.toml"))
@@ -358,11 +385,15 @@ pub fn active_account(config: &Config) -> Option<(&str, &Account)> {
         .as_deref()
         .and_then(|name| config.accounts.get(name).map(|account| (name, account)))
         .or_else(|| {
-            config
-                .accounts
-                .iter()
-                .next()
-                .map(|(name, account)| (name.as_str(), account))
+            (config.accounts.len() == 1)
+                .then(|| {
+                    config
+                        .accounts
+                        .iter()
+                        .next()
+                        .map(|(name, account)| (name.as_str(), account))
+                })
+                .flatten()
         })
 }
 
@@ -730,10 +761,34 @@ mod tests {
                 email: None,
                 tier: None,
                 updated_at: None,
+                settings: BTreeMap::new(),
             },
         );
         config.active_account = Some("work".into());
         assert_eq!(select_account(&config, None).unwrap().0, "work");
+    }
+    #[test]
+    fn selects_the_only_account_but_requires_a_choice_for_multiple_accounts() {
+        let account = Account {
+            api_base: "https://example.test".into(),
+            token: Some("secret".into()),
+            email: None,
+            tier: None,
+            updated_at: None,
+            settings: BTreeMap::new(),
+        };
+        let mut config = Config::default();
+        config.accounts.insert("one".into(), account.clone());
+        assert_eq!(active_account(&config).unwrap().0, "one");
+        config.accounts.insert("two".into(), account);
+        assert!(active_account(&config).is_none());
+        assert!(select_account(&config, None).is_err());
+    }
+    #[test]
+    fn product_configs_are_home_dotfiles_and_names_are_bounded() {
+        assert!(config_path("bay").unwrap().ends_with(".bay"));
+        assert!(config_path("suffix").unwrap().ends_with(".suffix"));
+        assert!(config_path("../unsafe").is_err());
     }
     #[test]
     fn parses_unlimited_admin_headers() {

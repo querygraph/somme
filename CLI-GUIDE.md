@@ -144,8 +144,8 @@ man somme
 
 # FILES
 
-`APP/config.toml`
-: Named account profiles under the platform configuration directory.
+`~/.APP`
+: Extensible TOML configuration containing named account profiles. A sole profile is selected automatically; multiple profiles require an explicit active account. Existing platform `APP/config.toml` configuration is read as a migration fallback until the next save.
 
 # EXIT STATUS
 

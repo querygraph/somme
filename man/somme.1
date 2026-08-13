@@ -178,8 +178,12 @@ prefix.
 API base paired with the environment token.
 .SH FILES
 .TP
-\f[CR]APP/config.toml\f[R]
-Named account profiles under the platform configuration directory.
+\f[CR]\(ti/.APP\f[R]
+Extensible TOML configuration containing named account profiles.
+A sole profile is selected automatically; multiple profiles require an
+explicit active account.
+Existing platform \f[CR]APP/config.toml\f[R] configuration is read as a
+migration fallback until the next save.
 .SH EXIT STATUS
 Zero indicates success.
 Nonzero indicates invalid arguments, missing configuration,
