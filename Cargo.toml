@@ -1,6 +1,6 @@
 [package]
 name = "somme-cli"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Reusable authenticated CLI core for Somme-derived applications"
 license = "MIT"

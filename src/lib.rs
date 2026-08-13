@@ -295,11 +295,14 @@ where
 
 pub fn write_toml<T: Serialize>(path: &PathBuf, value: &T) -> Result<()> {
     if let Some(parent) = path.parent() {
+        let create_parent = !parent.exists();
         fs::create_dir_all(parent)
             .with_context(|| format!("could not create {}", parent.display()))?;
         #[cfg(unix)]
-        fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
-            .with_context(|| format!("could not secure {}", parent.display()))?;
+        if create_parent {
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
+                .with_context(|| format!("could not secure {}", parent.display()))?;
+        }
     }
     let serialized = toml::to_string(value)?;
     let suffix = SystemTime::now()
