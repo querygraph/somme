@@ -106,6 +106,7 @@ fn login(product: &Product, args: LoginArgs) -> Result<()> {
         .account
         .or_else(|| args.email.clone())
         .or_else(|| config.active_account.clone())
+        .or_else(|| active_account(&config).map(|(name, _)| name.to_owned()))
         .unwrap_or_else(|| "default".into());
     if args.token.is_none() {
         let (_, account) = select_account(&config, Some(&name))?;
@@ -182,7 +183,7 @@ fn show_config(product: &Product) -> Result<()> {
     println!("app = {}", product.slug);
     println!(
         "account = {}",
-        c.active_account.as_deref().unwrap_or("none")
+        active_account(&c).map(|(name, _)| name).unwrap_or("none")
     );
     println!("config_file = {}", product.config_path()?.display());
     println!(
